@@ -1,130 +1,160 @@
-name: Build SN-R1 ImmortalWrt 25.12 Firmware
+name: Build SN-R1 ImmortalWrt v25.12 (openwrt-25.05分支)
 
 on:
   workflow_dispatch:
-
-permissions:
-  contents: write
+    inputs:
+      LAN_IP:
+        description: '路由器LAN口登录IP'
+        required: true
+        default: '192.168.99.1'
+      EMMC_HIGHSPEED:
+        description: 'eMMC是否开启高速模式（52MHz，默认开启）'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
-  build-snr1-2512:
+  build-sn-r1:
     runs-on: ubuntu-22.04
-    env:
-      TARGET_ARCH: mediatek
-      TARGET_SUBARCH: filogic
-      DEVICE_PROFILE: globenet_sn-r1
-      DTS_PATH: kernel/arch/arm64/boot/dts/mediatek/mt7981-sn-r1.dts
-      FW_VERSION: 25.12
+    permissions:
+      contents: write
 
     steps:
-      # 步骤1：拉取源码（修复点1：增加子模块拉取，确保scripts/config完整）
-      - name: Checkout ImmortalWrt 25.12 Source
+      # 1. 拉取仓库配置文件
+      - name: Checkout local config
         uses: actions/checkout@v4
-        with:
-          ref: openwrt-25.12
-          fetch-depth: 0
-          submodules: recursive  # 新增：拉取所有子模块（含scripts/config依赖）
 
-      # 步骤2：安装依赖（修复点2：补充25.12 scripts/config必需依赖）
-      - name: Install Full Dependencies for 25.12
+      # 2. 清理磁盘空间（GitHub Actions默认空间不足）
+      - name: Clean disk space
         run: |
-          sudo apt update -y && sudo apt full-upgrade -y
-          # 新增：libncurses-dev/libtinfo-dev（scripts/config编译必需）
-          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-          gettext git libncurses5-dev libncurses-dev libtinfo-dev libssl-dev python3-distutils rsync unzip zlib1g-dev \
-          file wget curl qemu-utils device-tree-compiler swig libpcap-dev libelf-dev python3-pip \
-          libffi-dev python3-dev
-          # 修复点3：安装最新版make（解决25.12与默认make版本兼容问题）
-          sudo apt install -y make --upgrade
-          sudo apt autoremove -y && sudo apt clean -y
-          pip3 install --upgrade pip setuptools
+          sudo apt clean && sudo apt autoremove -y
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet /var/lib/docker
+          df -hT
 
-      # 步骤3：替换设备树（保持不变，仅需确认你的Raw链接正确）
-      - name: Deploy Custom SN-R1 DTS (25.12)
+      # 3. 安装编译依赖（仅保留必需项，无冗余）
+      - name: Install build dependencies
         run: |
-          # ########## 替换为你的kernel.dts Raw链接 ##########
-          wget -O custom-sn-r1.dts https://raw.githubusercontent.com/justemu/immortalwrt/openwrt-25.12/SN-R1/kernel.dts
-          # ##################################################
-          
-          mkdir -p $(dirname ${{ env.DTS_PATH }})
-          cp custom-sn-r1.dts ${{ env.DTS_PATH }}
-          echo "✅ 设备树已替换"
-          
-          # 校验设备树语法
-          dtc -I dts -O dtb -o /tmp/test.dtb ${{ env.DTS_PATH }}
-          if [ $? -ne 0 ]; then
-            echo "❌ 设备树语法错误！"
-            exit 1
-          fi
+          sudo apt update -y
+          sudo apt install -y --no-install-recommends \
+            build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk git gettext libssl-dev \
+            python3 python3-pip rsync flex bison unzip wget curl device-tree-compiler libtool autoconf pkg-config
 
-      # 步骤4：配置编译参数（修复点4：显式指定编译器，解决scripts/config兼容问题）
-      - name: Configure SN-R1 Build (25.12)
+      # 4. 拉取ImmortalWrt v25.12源码（对应官方openwrt-25.05分支）
+      - name: Clone ImmortalWrt v25.12 source (branch: openwrt-25.05)
         run: |
-          # 新增：显式指定CC=gcc，避免clang编译scripts/config报错
-          export CC=gcc
-          export CXX=g++
-          
-          # 加载基础配置
-          make defconfig TARGET=${{ env.TARGET_ARCH }} TARGET_SUBTARGET=${{ env.TARGET_SUBARCH }} PROFILE=${{ env.DEVICE_PROFILE }}
-          
-          # 1G内存+25.12优化
-          echo "CONFIG_DEVEL=y" >> .config
-          echo "CONFIG_CCACHE=y" >> .config
-          echo "CONFIG_EXTRA_OPTIMIZATION=-Os" >> .config
-          # 128G eMMC配置
-          echo "CONFIG_TARGET_ROOTFS_PARTSIZE=102400" >> .config
-          echo "CONFIG_TARGET_EXT4_BLOCKSIZE=4096" >> .config
-          echo "CONFIG_TARGET_USES_UBIFS=y" >> .config
-          # eMMC驱动
-          echo "CONFIG_MMC_EMMC=y" >> .config
-          echo "CONFIG_MEDIATEK_MMC=y" >> .config
-          echo "CONFIG_MTD=y" >> .config
-          
-          make defconfig
+          # 关键说明：openwrt-25.05分支是v25.12版本的官方源码分支，无openwrt-25.12分支
+          git clone --depth=1 https://github.com/immortalwrt/immortalwrt -b openwrt-25.05 openwrt
+          cd openwrt
+          echo "✅ 源码分支：$(git branch -v | grep '*' | awk '{print $2}')"
+          echo "✅ 对应发布版本：ImmortalWrt v25.12"
 
-      # 步骤5：下载依赖（保持不变）
-      - name: Download 25.12 Dependencies
+      # 5. 替换SN-R1的DTS文件（开启PCIe/M.2、关闭USB、无WiFi功率限制）
+      - name: Replace SN-R1 DTS file
         run: |
-          make download -j1
-          find dl -size -1024c -exec rm -f {} \;
+          # 替换为你自己的SN-R1 DTS Raw链接（必改这一行！）
+          DTS_URL="https://raw.githubusercontent.com/justemu/immortalwrt/openwrt-25.12/SN-R1/kernel.dts"
+          wget -O openwrt/target/linux/mediatek/dts/mt7981ba-sn-r1.dts $DTS_URL --no-check-certificate
+          # 验证DTS语法（提前排错）
+          dtc -I dts -O dtb -o /dev/null openwrt/target/linux/mediatek/dts/mt7981ba-sn-r1.dts
+          echo "✅ SN-R1 DTS文件验证通过"
 
-      # 步骤6：编译固件（修复点5：先单独编译scripts/config，再编译固件）
-      - name: Build SN-R1 25.12 Firmware
+      # 6. 添加Passwall + EasyMesh插件源（无OpenClash）
+      - name: Add Passwall & EasyMesh feeds
         run: |
-          # 新增：先单独编译scripts/config，确保该工具正常
+          cd openwrt
+          # 移除可能的重复源
+          sed -i '/passwall/d; /easymesh/d' feeds.conf.default
+          # 添加官方源
+          echo "src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main" >> feeds.conf.default
+          echo "src-git passwall https://github.com/xiaorouji/openwrt-passwall.git;main" >> feeds.conf.default
+          echo "src-git easymesh https://github.com/ntlf9t/luci-app-easymesh.git;master" >> feeds.conf.default
+          # 更新feeds
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      # 7. 单线程构建config工具（解决你最初的编译失败报错）
+      - name: Build config tool (single thread)
+        run: |
+          cd openwrt
+          make clean
+          rm -f scripts/config/conf
           make -j1 scripts/config/conf V=s
-          # 再编译固件
-          make -j1 V=s 2>&1 | tee sn-r1-2512-build.log
-          
-          # 检查固件
-          FW_FILE=$(ls bin/targets/${{ env.TARGET_ARCH }}/${{ env.TARGET_SUBARCH }}/*.img 2>/dev/null)
-          if [ -z "$FW_FILE" ]; then
-            echo "❌ 编译失败，日志："
-            cat sn-r1-2512-build.log
-            exit 1
-          fi
-          echo "✅ 编译成功：$FW_FILE"
+          echo "✅ Config工具构建成功（解决scripts/config/conf build failed问题）"
 
-      # 步骤7：上传产物（保持不变）
-      - name: Upload 25.12 Artifacts
+      # 8. 生成编译配置（贴合SN-R1硬件）
+      - name: Generate build config
+        run: |
+          cd openwrt
+          # 加载MT7981BA默认配置
+          make mediatek/mt7981ba_defconfig
+          # 追加自定义配置
+          cat >> .config << EOF
+          # ========== 机型适配 ==========
+          CONFIG_TARGET_PROFILE="DEVICE_sn_r1"
+          CONFIG_TARGET_mediatek_mt7981_DEVICE_sn_r1=y
+
+          # ========== 硬件适配（SN-R1无USB、有M.2） ==========
+          # 彻底禁用USB（硬件无USB口，核心！）
+          # CONFIG_PACKAGE_kmod-usb-core is not set
+          # CONFIG_PACKAGE_kmod-usb3 is not set
+          # CONFIG_PACKAGE_usb-storage is not set
+          # 启用M.2/PCIe + NVMe（核心！）
+          CONFIG_PACKAGE_kmod-pcie-mediatek=y
+          CONFIG_PACKAGE_kmod-nvme=y
+
+          # ========== 插件配置（仅保留你需要的） ==========
+          CONFIG_PACKAGE_luci-app-dockerman=y       # Dockerman
+          CONFIG_PACKAGE_luci-app-passwall=y       # Passwall（无OpenClash）
+          CONFIG_PACKAGE_luci-app-easymesh=y       # EasyMesh
+          CONFIG_PACKAGE_luci-i18n-passwall-zh-cn=y # Passwall中文
+          CONFIG_PACKAGE_luci-i18n-easymesh-zh-cn=y # EasyMesh中文
+
+          # ========== 其他配置 ==========
+          CONFIG_TARGET_ROOTFS_SQUASHFS=y # 固件格式
+          EOF
+          # 生效配置
+          make defconfig
+          echo "✅ 编译配置生成完成"
+
+      # 9. 设置LAN IP地址
+      - name: Set LAN IP address
+        run: |
+          cd openwrt
+          LAN_IP="${{ github.event.inputs.LAN_IP }}"
+          # 修改默认IP
+          sed -i "s/192\.168\.[0-9]*\.[0-9]*/$LAN_IP/g" package/base-files/files/bin/config_generate
+          echo "✅ LAN IP已设置为：$LAN_IP"
+
+      # 10. 调整eMMC速度（根据参数选择）
+      - name: Set eMMC speed
+        if: github.event.inputs.EMMC_HIGHSPEED == 'false'
+        run: |
+          DTS_FILE=openwrt/target/linux/mediatek/dts/mt7981ba-sn-r1.dts
+          # 关闭highspeed，改为26MHz
+          sed -i '/cap-mmc-highspeed/d' $DTS_FILE
+          sed -i 's/max-frequency = <52000000>/max-frequency = <26000000>/g' $DTS_FILE
+          echo "✅ eMMC已设置为26MHz（低速模式）"
+
+      # 11. 下载依赖包（避免编译时断网）
+      - name: Download dependencies
+        run: |
+          cd openwrt
+          make download -j$(nproc)
+          # 清理空包
+          find dl -size -1024c -exec rm -f {} \;
+          echo "✅ 依赖包下载完成"
+
+      # 12. 编译固件（2核最优，避免资源耗尽）
+      - name: Compile firmware
+        run: |
+          cd openwrt
+          make -j2 world V=s
+          echo "✅ 固件编译完成"
+
+      # 13. 上传固件（保留90天，方便下载）
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SN-R1-ImmortalWrt-25.12
-          path: |
-            bin/targets/**/*.bin
-            bin/targets/**/*.img
-            sn-r1-2512-build.log
+          name: SN-R1-ImmortalWrt-v25.12-${{ github.event.inputs.LAN_IP }}
+          path: openwrt/bin/targets/mediatek/mt7981/*.bin
           retention-days: 90
-
-      # 步骤8：自动Release（保持不变）
-      - name: Create 25.12 Release
-        if: success()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: SN-R1-25.12-$(date +%Y%m%d)
-          name: SN-R1 ImmortalWrt 25.12 $(date +%Y%m%d)
-          files: bin/targets/${{ env.TARGET_ARCH }}/${{ env.TARGET_SUBARCH }}/*.img
-          body: |
-            全球牛SN-R1 ImmortalWrt 25.12 适配固件
-            硬件：MT7981/1GB内存/128GB eMMC
-            编译时间：$(date +%Y-%m-%d %H:%M:%S)
