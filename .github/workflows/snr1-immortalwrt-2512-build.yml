@@ -43,7 +43,7 @@ jobs:
       - name: Deploy Custom SN-R1 DTS (25.12)
         run: |
           # ########## 替换为你的kernel.dts Raw链接 ##########
-          wget -O custom-sn-r1.dts https://raw.githubusercontent.com/justemu/Actions-HY3000/main/SN-R1_collection/kernel.dts
+          wget -O custom-sn-r1.dts https://raw.githubusercontent.com/justemu/immortalwrt/openwrt-25.12/SN-R1/kernel.dts
           # ##################################################
           
           mkdir -p $(dirname ${{ env.DTS_PATH }})
