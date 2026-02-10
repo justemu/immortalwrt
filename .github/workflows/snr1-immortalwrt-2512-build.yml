@@ -1,0 +1,130 @@
+name: Build SN-R1 ImmortalWrt 25.12 Firmware
+
+# 仅手动触发，避免误编译
+on:
+  workflow_dispatch:
+
+# 权限配置（必须，否则无法上传固件）
+permissions:
+  contents: write
+
+jobs:
+  build-snr1-2512:
+    runs-on: ubuntu-22.04  # 25.12版本推荐的编译环境
+    env:
+      # SN-R1 25.12版本固定配置（无需修改）
+      TARGET_ARCH: mediatek
+      TARGET_SUBARCH: filogic
+      DEVICE_PROFILE: globenet_sn-r1  # SN-R1官方配置名
+      DTS_PATH: kernel/arch/arm64/boot/dts/mediatek/mt7981-sn-r1.dts  # 25.12版本DTS路径
+      FW_VERSION: 25.12
+
+    steps:
+      # 步骤1：拉取ImmortalWrt 25.12源码（核心：指定25.12分支）
+      - name: Checkout ImmortalWrt 25.12 Source
+        uses: actions/checkout@v4
+        with:
+          ref: openwrt-25.12  # 锁定25.12分支
+          fetch-depth: 0      # 拉取完整源码，避免依赖缺失
+
+      # 步骤2：安装25.12版本编译依赖（MT7981专属）
+      - name: Install Dependencies for MT7981 & 25.12
+        run: |
+          sudo apt update -y && sudo apt full-upgrade -y
+          # 25.12版本必需的依赖（含MT7981/ARM64/eMMC适配）
+          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+          gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev \
+          file wget curl qemu-utils device-tree-compiler swig libpcap-dev libelf-dev python3-pip \
+          libffi-dev python3-dev  # 25.12新增依赖
+          sudo apt autoremove -y && sudo apt clean -y
+          pip3 install --upgrade pip setuptools  # 适配25.12的Python依赖
+
+      # 步骤3：替换SN-R1设备树（唯一需要你修改的地方）
+      - name: Deploy Custom SN-R1 DTS (25.12)
+        run: |
+          # ########## 请替换为你的kernel.dts Raw链接 ##########
+          wget -O custom-sn-r1.dts https://raw.githubusercontent.com/justemu/Actions-HY3000/main/SN-R1_collection/kernel.dts
+          # ##################################################
+          
+          # 验证目录并替换（25.12版本DTS路径未变）
+          mkdir -p $(dirname ${{ env.DTS_PATH }})
+          cp custom-sn-r1.dts ${{ env.DTS_PATH }}
+          echo "✅ 25.12版本SN-R1设备树已替换：${{ env.DTS_PATH }}"
+          
+          # 语法校验（提前排查错误，25.12版本dtc编译器更严格）
+          dtc -I dts -O dtb -o /tmp/test.dtb ${{ env.DTS_PATH }}
+          if [ $? -ne 0 ]; then
+            echo "❌ 设备树语法错误（25.12版本dtc校验更严格）！"
+            exit 1
+          fi
+
+      # 步骤4：配置25.12版本SN-R1编译参数（适配1G/128G）
+      - name: Configure SN-R1 Build (25.12)
+        run: |
+          # 加载25.12版本SN-R1基础配置
+          make defconfig TARGET=${{ env.TARGET_ARCH }} TARGET_SUBTARGET=${{ env.TARGET_SUBARCH }} PROFILE=${{ env.DEVICE_PROFILE }}
+          
+          # 1G内存优化（25.12版本编译更耗内存，必须启用）
+          echo "CONFIG_DEVEL=y" >> .config
+          echo "CONFIG_CCACHE=y" >> .config
+          echo "CONFIG_EXTRA_OPTIMIZATION=-Os" >> .config  # 减少内存占用
+          # 128G eMMC适配（25.12版本分区配置优化）
+          echo "CONFIG_TARGET_ROOTFS_PARTSIZE=102400" >> .config  # 100GB根分区
+          echo "CONFIG_TARGET_EXT4_BLOCKSIZE=4096" >> .config     # eMMC最佳块大小
+          echo "CONFIG_TARGET_USES_UBIFS=y" >> .config            # 25.12新增eMMC挂载参数
+          # 启用MT7981 eMMC驱动（25.12版本必需）
+          echo "CONFIG_MMC_EMMC=y" >> .config
+          echo "CONFIG_MEDIATEK_MMC=y" >> .config
+          echo "CONFIG_MTD=y" >> .config
+          
+          # 保存25.12版本配置
+          make defconfig
+          # 打印配置摘要（便于排查）
+          cat .config | grep -E "25.12|MT7981|MMC|ROOTFS"
+
+      # 步骤5：下载25.12版本依赖包（单线程避免内存溢出）
+      - name: Download 25.12 Dependencies
+        run: |
+          make download -j1  # 1G内存必须单线程
+          # 清理25.12版本损坏的依赖包
+          find dl -size -1024c -exec rm -f {} \;
+          echo "✅ 25.12版本依赖包下载完成"
+
+      # 步骤6：编译25.12版本固件（1G内存强制-j1）
+      - name: Build SN-R1 25.12 Firmware
+        run: |
+          # 25.12版本编译参数（详细日志便于排查）
+          make -j1 V=s 2>&1 | tee sn-r1-2512-build.log
+          # 检查固件是否生成
+          FW_FILE=$(ls bin/targets/${{ env.TARGET_ARCH }}/${{ env.TARGET_SUBARCH }}/*.img 2>/dev/null)
+          if [ -z "$FW_FILE" ]; then
+            echo "❌ 25.12版本固件编译失败，日志："
+            cat sn-r1-2512-build.log
+            exit 1
+          fi
+          echo "✅ SN-R1 25.12固件编译成功：$FW_FILE"
+
+      # 步骤7：上传25.12固件+日志（保留90天）
+      - name: Upload 25.12 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SN-R1-ImmortalWrt-25.12
+          path: |
+            bin/targets/**/*.bin
+            bin/targets/**/*.img
+            sn-r1-2512-build.log
+          retention-days: 90
+
+      # 步骤8（可选）：自动创建25.12版本Release
+      - name: Create 25.12 Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: SN-R1-25.12-$(date +%Y%m%d)
+          name: SN-R1 ImmortalWrt 25.12 $(date +%Y%m%d)
+          files: bin/targets/${{ env.TARGET_ARCH }}/${{ env.TARGET_SUBARCH }}/*.img
+          body: |
+            全球牛SN-R1 ImmortalWrt 25.12 官方适配固件
+            硬件：MT7981/1GB内存/128GB eMMC
+            编译时间：$(date +%Y-%m-%d %H:%M:%S)
+            特性：完整eMMC分区支持、1G内存优化、MT7981驱动全量启用
