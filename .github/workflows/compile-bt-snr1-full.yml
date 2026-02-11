@@ -38,10 +38,7 @@ jobs:
           sudo rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/*
           # 创建专用临时目录，避免权限问题
           mkdir -p $TMPDIR && chmod 777 $TMPDIR
-          # 验证清理效果（日志中可查看可用空间）
-          echo "=== 前置清理后磁盘空间 ==="
-          df -h /
-          du -sh /usr/share/ /opt/ /usr/local/ | sort -hr
+
 
       - name: 2. 拉取源码（浅克隆+仅拉取必要分支，减少空间）
         uses: actions/checkout@v4
