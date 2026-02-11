@@ -25,14 +25,14 @@ jobs:
         run: |
           # 删除GitHub Runner默认冗余大文件（优先级从高到低）
           sudo rm -rf \
-            /usr/share/dotnet \          # .NET SDK (~2GB)
-            /usr/local/lib/android \     # Android SDK (~3GB)
-            /opt/ghc \                   # Haskell编译器 (~1GB)
-            /opt/hostedtoolcache/CodeQL \# CodeQL工具 (~1GB)
-            /usr/local/share/powershell \# PowerShell (~500MB)
-            /usr/local/lib/node_modules \# Node.js模块 (~500MB)
-            /opt/miniconda \             # Conda环境 (~1GB)
-            /usr/share/maven \           # Maven仓库 (~500MB)
+            /usr/share/dotnet \          
+            /usr/local/lib/android \     
+            /opt/ghc \                   
+            /opt/hostedtoolcache/CodeQL \ 
+            /usr/local/share/powershell \ 
+            /usr/local/lib/node_modules \ 
+            /opt/miniconda \             
+            /usr/share/maven \          
           # 清理系统缓存+临时文件
           sudo apt autoremove -y --purge && sudo apt clean -y
           sudo rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/*
