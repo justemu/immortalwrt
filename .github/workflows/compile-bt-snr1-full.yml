@@ -97,8 +97,7 @@ jobs:
           ./scripts/feeds clean --force
           # 仅更新必需feeds（避免全量更新浪费空间）
           ./scripts/feeds update -a -f
-          # 安装feeds后删除.git目录（减少~500MB）
-          find feeds/ -name ".git" -type d -exec rm -rf {} \;
+
           # 清理feeds临时文件
           rm -rf tmp/ feeds/*/.svn feeds/*/.github
           echo "=== Feeds处理后磁盘空间 ==="
