@@ -27,37 +27,52 @@ jobs:
           curl jq time libelf-dev libncursesw5-dev autoconf automake libtool autopoint \
           texinfo patch pkg-config meson ninja-build
 
-      # ========== 补充Tailscale Feeds源（新增） ==========
-      - name: 3. 添加第三方Feeds源（含Tailscale）
+      - name: 3. 修正第三方Feeds源（解决目录不匹配）
         run: |
-          # 原有源（dockerman/ddns-go/passwall）
-          echo "src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git" >> feeds.conf.default
-          echo "src-git kenzok8luci https://github.com/kenzok8/luci.git" >> feeds.conf.default
+          # 清空原有feeds.conf.default，避免冲突
+          > feeds.conf.default
+          # 添加ImmortalWrt官方默认feeds（必须先加）
+          echo "src-git packages https://github.com/immortalwrt/packages.git;openwrt-25.12" >> feeds.conf.default
+          echo "src-git luci https://github.com/immortalwrt/luci.git;openwrt-25.12" >> feeds.conf.default
+          echo "src-git routing https://github.com/openwrt/routing.git;openwrt-25.12" >> feeds.conf.default
+          echo "src-git telephony https://github.com/openwrt/telephony.git;openwrt-25.12" >> feeds.conf.default
+          
+          # 添加第三方源（修正名称与路径，确保目录匹配）
+          echo "src-git small https://github.com/kenzok8/small-package.git" >> feeds.conf.default
           echo "src-git passwall https://github.com/xiaorouji/openwrt-passwall.git;main" >> feeds.conf.default
-          # Tailscale源（新增）
           echo "src-git tailscale https://github.com/adyanth/openwrt-tailscale.git;main" >> feeds.conf.default
+          
           # 验证Feeds配置
           cat feeds.conf.default
 
-      - name: 4. 更新&安装feeds（含Tailscale）
+      - name: 4. 更新&安装feeds（修正后）
         run: |
+          ./scripts/feeds clean
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          # 强制安装所有关键包（含Tailscale）
-          ./scripts/feeds install luci-app-dockerman luci-app-passwall luci-app-ddns-go luci-app-easymesh luci-app-vlmcsd
+          # 强制安装所有关键包
+          ./scripts/feeds install \
+            luci-app-dockerman \
+            luci-app-passwall \
+            luci-app-ddns-go \
+            luci-app-easymesh \
+            luci-app-vlmcsd \
+            luci-app-tailscale
 
       - name: 5. 生成编译配置文件
         run: |
           echo -e "CONFIG_TARGET_mediatek=y\nCONFIG_TARGET_mediatek_filogic=y\nCONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_bt-snr1=y" > .config
           make defconfig
-          
+          # 验证所有包是否被正确识别
+          cat .config | grep -E "CONFIG_PACKAGE_luci-app|CONFIG_PACKAGE_tailscale"
+
       - name: 6. 下载所有依赖包
         run: |
           make -j$(nproc) download V=s
           find ./dl -size -1024c -exec ls -l {} \;
           find ./dl -size -1024c -exec rm -f {} \;
 
-      - name: 7. 编译固件
+      - name: 7. 编译固件（适配GitHub Action资源）
         run: |
           make -j2 V=s
           ls -lh bin/targets/mediatek/filogic/
