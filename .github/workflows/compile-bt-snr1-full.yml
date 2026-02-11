@@ -55,11 +55,12 @@ jobs:
           make -j$(nproc) download V=s
           find ./dl -size -1024c -exec rm -f {} \;
 
-      - name: 7. 编译前磁盘清理（仅保留这一步清理）
+      - name: 7. 编译前磁盘清理（仅保留这一步清理）  
         run: |
           # 仅清理临时文件，不删除任何依赖/配置
-          sudo rm -rf /tmp/* /var/tmp/* ~/.cache/*
-          sudo sync && sudo echo 3 > /proc/sys/vm/drop_caches
+          sudo rm -rf /tmp/* /var/tmp/* ~/.cache/* || true
+          # 修复权限问题：用sudo bash -c 包裹整个命令，确保重定向有root权限
+          sudo sync && sudo bash -c "echo 3 > /proc/sys/vm/drop_caches" || true
           df -h /
 
       - name: 8. 编译固件
