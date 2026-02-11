@@ -21,24 +21,31 @@ jobs:
       TARGET_DEVICE: bt-snr1
 
     steps:
-      - name: 1. 极致前置清理（释放5-7GB空间，核心！）
+      - name: 1. 极致前置清理（修复语法+容错，核心！）
         run: |
-          # 删除GitHub Runner默认冗余大文件（优先级从高到低）
-          sudo rm -rf \
-            /usr/share/dotnet \          
-            /usr/local/lib/android \     
-            /opt/ghc \                   
-            /opt/hostedtoolcache/CodeQL \ 
-            /usr/local/share/powershell \ 
-            /usr/local/lib/node_modules \ 
-            /opt/miniconda \             
-            /usr/share/maven \          
-          # 清理系统缓存+临时文件
-          sudo apt autoremove -y --purge && sudo apt clean -y
-          sudo rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ~/.cache/*
+          set +e  # 关闭bash严格模式，避免单个目录删除失败终止
+          # 逐个删除大体积冗余目录（拆分命令，避免解析错误），不存在则忽略
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/local/share/powershell || true
+          sudo rm -rf /usr/local/lib/node_modules || true
+          sudo rm -rf /opt/miniconda || true
+          sudo rm -rf /usr/share/maven || true
+          # 清理系统缓存（分开执行，避免权限问题）
+          sudo apt autoremove -y --purge || true
+          sudo apt clean -y || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+          sudo rm -rf /tmp/* /var/tmp/* || true
+          rm -rf ~/.cache/* || true  # 非sudo，runner用户自己的缓存
+          set -e  # 恢复严格模式
           # 创建专用临时目录，避免权限问题
           mkdir -p $TMPDIR && chmod 777 $TMPDIR
-
+          # 验证清理效果
+          echo "=== 前置清理后磁盘空间 ==="
+          df -h /
+          du -sh /usr/share/ /opt/ /usr/local/ | sort -hr
 
       - name: 2. 拉取源码（浅克隆+仅拉取必要分支，减少空间）
         uses: actions/checkout@v4
