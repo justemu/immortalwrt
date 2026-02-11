@@ -61,6 +61,7 @@ jobs:
           sudo rm -rf /tmp/* /var/tmp/* ~/.cache/* || true
           # 修复权限问题：用sudo bash -c 包裹整个命令，确保重定向有root权限
           sudo sync && sudo bash -c "echo 3 > /proc/sys/vm/drop_caches" || true
+          sudo rm -rf /home/runner/work/immortalwrt/immortalwrt/tmp/*
           df -h /
 
       - name: 8. 编译固件
