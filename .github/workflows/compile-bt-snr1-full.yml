@@ -1,29 +1,24 @@
-# 脚本名称：编译ImmortalWrt 25.12 for bt-snr1（含全功能）
-name: Compile ImmortalWrt 25.12 for bt-snr1 (Full Features)
+name: Compile ImmortalWrt 25.12 for bt-snr1 (Full Features + Tailscale)
 
-# 仅手动触发编译（避免误操作自动编译）
 on:
   workflow_dispatch:
     inputs:
       build_description:
         description: '编译描述（可选）'
         required: false
-        default: 'bt-snr1 25.12 + EasyMesh + Dockerman + PassWall + DDNS-GO + Vlmcsd KMS'
+        default: 'bt-snr1 25.12 + EasyMesh + Dockerman + PassWall + DDNS-GO + Vlmcsd KMS + Tailscale'
 
-# 编译环境和步骤
 jobs:
   compile_firmware:
     runs-on: ubuntu-22.04
     steps:
-      # 步骤1：拉取ImmortalWrt 25.12源码（确认分支正确）
       - name: 1. 拉取源码（25.12分支）
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository }}  # 你的Fork仓库
-          ref: openwrt-25.12                   # 核心：25.12稳定分支
-          fetch-depth: 1                       # 浅克隆加速
+          repository: ${{ github.repository }}
+          ref: openwrt-25.12
+          fetch-depth: 1
 
-      # 步骤2：安装编译依赖（mt7981编译必需）
       - name: 2. 安装完整编译依赖
         run: |
           sudo apt update && sudo apt upgrade -y
@@ -32,46 +27,46 @@ jobs:
           curl jq time libelf-dev libncursesw5-dev autoconf automake libtool autopoint \
           texinfo patch pkg-config meson ninja-build
 
-      # 步骤3：更新并安装feeds（解决PassWall/DDNS-GO等包依赖）
-      - name: 3. 更新&安装feeds
+      # ========== 补充Tailscale Feeds源（新增） ==========
+      - name: 3. 添加第三方Feeds源（含Tailscale）
+        run: |
+          # 原有源（dockerman/ddns-go/passwall）
+          echo "src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git" >> feeds.conf.default
+          echo "src-git kenzok8luci https://github.com/kenzok8/luci.git" >> feeds.conf.default
+          echo "src-git passwall https://github.com/xiaorouji/openwrt-passwall.git;main" >> feeds.conf.default
+          # Tailscale源（新增）
+          echo "src-git tailscale https://github.com/adyanth/openwrt-tailscale.git;main" >> feeds.conf.default
+          # 验证Feeds配置
+          cat feeds.conf.default
+
+      - name: 4. 更新&安装feeds（含Tailscale）
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          # 确保第三方包源兼容（补充PassWall等包的依赖）
-          ./scripts/feeds install luci-app-passwall luci-app-ddns-go luci-app-vlmcsd
+          # 强制安装所有关键包（含Tailscale）
+          ./scripts/feeds install luci-app-dockerman luci-app-passwall luci-app-ddns-go luci-app-easymesh luci-app-vlmcsd
 
-      # 步骤4：生成编译配置（匹配你的bt-snr1设备）
-      - name: 4. 生成编译配置文件
+      - name: 5. 生成编译配置文件
         run: |
-          # 核心：指定编译目标（mt7981属于filogic平台）
           echo -e "CONFIG_TARGET_mediatek=y\nCONFIG_TARGET_mediatek_filogic=y\nCONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_bt-snr1=y" > .config
-          # 自动补全配置（包含你在filogic.mk里定义的所有包）
           make defconfig
-          # 显示配置摘要（方便排查）
-          cat .config | grep -E "DEVICE|TARGET|CONFIG_PACKAGE_luci-app-"
-
-      # 步骤5：下载编译依赖包（提前下载避免编译中断）
-      - name: 5. 下载所有依赖包
+          
+      - name: 6. 下载所有依赖包
         run: |
           make -j$(nproc) download V=s
-          # 清理缓存避免冲突
           find ./dl -size -1024c -exec ls -l {} \;
           find ./dl -size -1024c -exec rm -f {} \;
 
-      # 步骤6：开始编译固件（优化mt7981编译速度，避免超时）
-      - name: 6. 编译固件（适配GitHub Action资源）
+      - name: 7. 编译固件
         run: |
-          # 限制编译线程（避免内存溢出，GitHub Action默认2核，用-j2）
           make -j2 V=s
-          # 显示编译结果
           ls -lh bin/targets/mediatek/filogic/
 
-      # 步骤7：上传固件（编译完成后可下载）
-      - name: 7. 上传固件到Artifact
+      - name: 8. 上传固件到Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bt-snr1-immortalwrt-25.12-full-features
+          name: bt-snr1-immortalwrt-25.12-full-features-tailscale
           path: |
             bin/targets/mediatek/filogic/*.bin
-            bin/targets/mediatek/filogic/*.manifest  # 包清单（验证是否包含所有功能）
-          retention-days: 90  # 固件保留90天，足够你下载
+            bin/targets/mediatek/filogic/*.manifest
+          retention-days: 90
