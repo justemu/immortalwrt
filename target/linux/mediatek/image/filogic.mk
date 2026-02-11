@@ -3405,22 +3405,18 @@ define Device/bt-snr1
   DEVICE_DTS := mt7981-bt-snr1
   DEVICE_DTS_DIR := ../dts
   IMAGE_SIZE := $(($(1024) * 1024))k
-  
   DEVICE_PACKAGES := \
-      kmod-mt7981-firmware kmod-mt7981-wifi \
-      kmod-mt7530 swconfig \
-      kmod-leds-gpio kmod-gpio-button-hotplug \
-      kmod-pcie-mt7981 \
-      kmod-mtk-hnat kmod-mt7981-wed kmod-nft-offload \
-      wpad-mesh-openssl kmod-mesh80211 kmod-mac80211-mesh-ext luci-proto-bonding luci-app-easymesh \
-      kmod-cgroup kmod-overlay kmod-iptables-nft \
-      docker-ce docker-compose luci-app-dockerman \
-      luci-app-passwall luci-i18n-passwall-zh-cn ipt2socks microsocks \
-      ddns-go luci-app-ddns-go \
-      vlmcsd luci-app-vlmcsd \
-      luci-mod-admin-full luci luci-ssl \
-      tcpdump-mini iputils-ping
-  
+	kmod-mt7981-firmware kmod-mt7981-wifi mt7981-wo-firmware \
+	kmod-mt7530 swconfig \
+	kmod-leds-gpio kmod-gpio-button-hotplug \
+	kmod-mt7981-dma kmod-nf-conntrack-netlink \
+	kmod-mtk-hnat kmod-mt7981-wed kmod-nft-offload \
+	kmod-crypto-hw-safexcel \
+	kmod-cgroup kmod-overlay kmod-iptables-nft \
+	kmod-mesh80211 kmod-mac80211-mesh-ext kmod-batman-adv \
+	wpad-mesh-openssl \
+	kmod-sched-cake kmod-tcp-bbr \
+	luci luci-ssl
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
 TARGET_DEVICES += bt-snr1
