@@ -53,13 +53,7 @@ jobs:
           repository: ${{ github.repository }}
           ref: openwrt-25.12
           fetch-depth: 1  # 仅拉取最新提交，不克隆历史（减少~1-2GB）
-          sparse-checkout: |  # 仅拉取编译必需目录，跳过文档/示例等冗余文件
-            target/
-            scripts/
-            include/
-            package/
-            feeds.conf.default
-            .config*
+
 
       - name: 3. 安装最小化编译依赖（仅装必需，减少空间）
         run: |
