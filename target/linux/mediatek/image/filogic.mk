@@ -3397,3 +3397,39 @@ define Device/zyxel_nwa50ax-pro
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
 TARGET_DEVICES += zyxel_nwa50ax-pro
+
+# 新增bt-snr1设备配置（适配ImmortalWrt 25.12 + 全功能）
+define Device/bt-snr1
+  DEVICE_VENDOR := BT
+  DEVICE_MODEL := sn-r1
+  DEVICE_DTS := mt7981-bt-snr1
+  DEVICE_DTS_DIR := ../dts
+  IMAGE_SIZE := 1048576k  # 1GB rootfs（按实际值调整）
+  
+  # 【完整包配置】驱动+EasyMesh+Dockerman+PassWall+DDNS-GO+Vlmcsd KMS
+  DEVICE_PACKAGES := \
+      # ========== 1. 硬件核心驱动（必加，匹配DTS） ==========
+      kmod-mt7981-firmware kmod-mt7981-wifi \
+      kmod-mt7530 swconfig \
+      kmod-leds-gpio kmod-gpio-button-hotplug \
+      kmod-pcie-mt7981 \
+      kmod-mtk-hnat kmod-mt7981-wed kmod-nft-offload \
+      # ========== 2. EasyMesh核心（含LuCI管理） ==========
+      wpad-mesh-openssl kmod-mesh80211 kmod-mac80211-mesh-ext luci-proto-bonding luci-app-easymesh \
+      # ========== 3. Dockerman（含内核依赖+LuCI） ==========
+      kmod-cgroup kmod-overlay kmod-iptables-nft \
+      docker-ce docker-compose luci-app-dockerman \
+      # ========== 4. PassWall（完整中文版+核心代理） ==========
+      luci-app-passwall luci-i18n-passwall-zh-cn ipt2socks microsocks \
+      # ========== 5. DDNS-GO（本体+LuCI管理） ==========
+      ddns-go luci-app-ddns-go \
+      # ========== 6. Vlmcsd KMS（本体+LuCI管理） ==========
+      vlmcsd luci-app-vlmcsd \
+      # ========== 7. 完整LuCI+基础工具 ==========
+      luci-mod-admin-full luci luci-ssl \
+      tcpdump-mini iputils-ping
+  
+  # 生成sysupgrade.bin（25.12固定规则）
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += bt-snr1
